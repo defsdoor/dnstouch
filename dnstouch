@@ -1,85 +1,92 @@
 #!/bin/ksh
+# (should work with bash also)
 #
-
-
 # Get current zone SOA to get serial
 
 DOMAIN=$1
 
+function error() {
+  MSG=$1
+  print -u2  "$DOMAIN:$MSG"
+  exit 1
+}
+
+function log() {
+  MSG=$1
+  print "$DOMAIN:$MSG"
+}
+
 if [[ -z $DOMAIN ]]
 then
-	print -u2 "Usage: $0 domain"
-	exit 1
+  error "Usage: $0 domain"
 fi
 
 DOMAINFILE="db.$DOMAIN"
 
 if [[ ! -r $DOMAINFILE ]]
 then
-	print -u2 "Expecting to see $DOMAINFILE in current directory"
-	exit 1
+  error "Expecting to see $DOMAINFILE in current directory"
 fi
 
 host -t SOA $DOMAIN localhost | while read RETDOMAIN HAS SOA RECORD NS CONTACT SERIAL REFRESH RETRY EXPIRY TTL
 do
-	[[ $HAS != "has" ]] && continue
+  [[ $HAS != "has" ]] && continue
 
 
-	if [[ $RETDOMAIN != $DOMAIN ]]
-	then
-		print -u2 "Obtaining current serial via host failed"
-		exit 1
-	fi
+  if [[ $RETDOMAIN != $DOMAIN ]]
+  then
+    error "Obtaining current serial via host failed"
+  fi
 
-	print "Current Serial: $SERIAL"
+  log "Current Serial: $SERIAL"
 
-	integer OCCURS
+  typeset -i OCCURS
 
-	OCCURS=$(grep -o -c "\<$SERIAL\>" $DOMAINFILE)
+  OCCURS=$(grep -o -c "\<$SERIAL\>" $DOMAINFILE)
 
-	if (( OCCURS != 1 ))
-	then
-		(( OCCURS == 0 )) && print -u2 "Could not find $SERION in $DOMAINFILE"
-		(( OCCURS > 1 )) && print -u2 "There seems to be multiple occurances of the serial $SERIAL in $DOMAINFILE."
-		exit 1
-	fi
+  if (( OCCURS != 1 ))
+  then
+    (( OCCURS == 0 )) && error "Could not find $SERIAL in $DOMAINFILE"
+    (( OCCURS > 1 )) && error "There seems to be multiple occurances of the serial $SERIAL in $DOMAINFILE."
+  fi
 
-	if [[ $SERIAL =~ [21][901][0-9][0-9][012][0-9][0123][0-9][0-9][0-9] ]]
-	then
-		print "Serial Format: YYYYMMDDnn"
-		NEWDATE=$(date '+%Y%m%d')
-	elif [[ $SERIAL =~ [0-9][0-9][012][0-9][0123][0-9][0-9][0-9] ]]
-	then	
-		print "Serial Format: YYMMDDnn"
-		NEWDATE=$(date '+%y%m%d')
-	else
-		print -u2 "Unsupported serial format $SERIAL"
-		exit 1
-	fi
+  if [[ $SERIAL =~ [21][901][0-9][0-9][012][0-9][0123][0-9][0-9][0-9] ]]
+  then
+    log "Serial Format: YYYYMMDDnn"
+    NEWDATE=$(date '+%Y%m%d')
+  elif [[ $SERIAL =~ [0-9][0-9][012][0-9][0123][0-9][0-9][0-9] ]]
+  then  
+    log "Serial Format: YYMMDDnn"
+    NEWDATE=$(date '+%y%m%d')
+  else
+    error "Unsupported serial format $SERIAL"
+  fi
 
-	typeset -Z2 OLDN NEWN
+  typeset -Z2 OLDN NEWN
 
-	OLDDATE=${SERIAL%??}
-	OLDN=${SERIAL#$OLDDATE}
-	
-	if [[ $OLDDATE == $NEWDATE ]]
-	then
-		((NEWN=OLDN+1))
-		if ((NEWN > 99 ))
-		then
-			print -u2 "Version portion of serial exceeds 99"
-			exit 1
-		fi
-		NEWSERIAL="${NEWDATE}${NEWN}"
-	elif [[ $OLDDATE < $NEWDATE ]]
-	then
-		NEWSERIAL="${NEWDATE}00"
-	else
-		print -u2 "Current serial is in the future"
-		exit 1
-	fi
+  OLDDATE=${SERIAL%??}
+  OLDN=${SERIAL#$OLDDATE}
+  
+  if [[ $OLDDATE == $NEWDATE ]]
+  then
+    ((NEWN=OLDN+1))
+    if ((NEWN > 99 ))
+    then
+      error "Version portion of serial exceeds 99"
+    fi
+    NEWSERIAL="${NEWDATE}${NEWN}"
+  elif [[ $OLDDATE < $NEWDATE ]]
+  then
+    NEWSERIAL="${NEWDATE}00"
+  else
+    error "Current serial is in the future"
+  fi
 
-	sed -i- "s/$SERIAL/$NEWSERIAL/" $DOMAINFILE
+  log "New Serial: $NEWSERIAL"
 
-	exit 0   # Only handle one line of output from host
+  sed -i- "s/$SERIAL/$NEWSERIAL/" $DOMAINFILE
+
+  diff $DOMAINFILE ${DOMAINFILE}-
+
+  exit 0   # Only handle one line of output from host
 done
