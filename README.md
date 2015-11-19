@@ -10,3 +10,11 @@ The most useful one is -s - to specify the current serial - use this when your z
 
 ## Usage
   dnstouch [-h dnshost] [-s current serial] [-z zone file] domain"
+
+
+# Example 
+
+Testing the last 2 digits overflow
+
+dnstouch -s 2015111999 example2.com
+
