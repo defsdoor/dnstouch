@@ -1,7 +1,7 @@
 $ORIGIN .
 $TTL 5m
 example.com IN SOA  srv.example.com. hostmaster.example.com. (
-    2015111904 3H 30M 1W 6H)
+    2015111999 3H 30M 1W 6H)
     NS  ns.example.com.
     NS  ns2.example.com.
     A 1.2.3.4
