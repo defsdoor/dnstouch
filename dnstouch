@@ -1,0 +1,85 @@
+#!/bin/ksh
+#
+
+
+# Get current zone SOA to get serial
+
+DOMAIN=$1
+
+if [[ -z $DOMAIN ]]
+then
+	print -u2 "Usage: $0 domain"
+	exit 1
+fi
+
+DOMAINFILE="db.$DOMAIN"
+
+if [[ ! -r $DOMAINFILE ]]
+then
+	print -u2 "Expecting to see $DOMAINFILE in current directory"
+	exit 1
+fi
+
+host -t SOA $DOMAIN localhost | while read RETDOMAIN HAS SOA RECORD NS CONTACT SERIAL REFRESH RETRY EXPIRY TTL
+do
+	[[ $HAS != "has" ]] && continue
+
+
+	if [[ $RETDOMAIN != $DOMAIN ]]
+	then
+		print -u2 "Obtaining current serial via host failed"
+		exit 1
+	fi
+
+	print "Current Serial: $SERIAL"
+
+	integer OCCURS
+
+	OCCURS=$(grep -o -c "\<$SERIAL\>" $DOMAINFILE)
+
+	if (( OCCURS != 1 ))
+	then
+		(( OCCURS == 0 )) && print -u2 "Could not find $SERION in $DOMAINFILE"
+		(( OCCURS > 1 )) && print -u2 "There seems to be multiple occurances of the serial $SERIAL in $DOMAINFILE."
+		exit 1
+	fi
+
+	if [[ $SERIAL =~ [21][901][0-9][0-9][012][0-9][0123][0-9][0-9][0-9] ]]
+	then
+		print "Serial Format: YYYYMMDDnn"
+		NEWDATE=$(date '+%Y%m%d')
+	elif [[ $SERIAL =~ [0-9][0-9][012][0-9][0123][0-9][0-9][0-9] ]]
+	then	
+		print "Serial Format: YYMMDDnn"
+		NEWDATE=$(date '+%y%m%d')
+	else
+		print -u2 "Unsupported serial format $SERIAL"
+		exit 1
+	fi
+
+	typeset -Z2 OLDN NEWN
+
+	OLDDATE=${SERIAL%??}
+	OLDN=${SERIAL#$OLDDATE}
+	
+	if [[ $OLDDATE == $NEWDATE ]]
+	then
+		((NEWN=OLDN+1))
+		if ((NEWN > 99 ))
+		then
+			print -u2 "Version portion of serial exceeds 99"
+			exit 1
+		fi
+		NEWSERIAL="${NEWDATE}${NEWN}"
+	elif [[ $OLDDATE < $NEWDATE ]]
+	then
+		NEWSERIAL="${NEWDATE}00"
+	else
+		print -u2 "Current serial is in the future"
+		exit 1
+	fi
+
+	sed -i- "s/$SERIAL/$NEWSERIAL/" $DOMAINFILE
+
+	exit 0   # Only handle one line of output from host
+done
